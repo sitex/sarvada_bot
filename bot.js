@@ -62,7 +62,7 @@ async function handleVoiceMessage(message) {
         console.log('Voice file downloaded. Size:', voiceFileResponse.data.length, 'bytes');
 
         console.log('Sending audio to Deepgram for transcription');
-        const response = await deepgramClient.listen.prerecorded.transcribeFile(
+        const { result, error } = await deepgramClient.listen.prerecorded.transcribeFile(
             voiceFileResponse.data,
             {
                 mimetype: 'audio/ogg',
@@ -71,13 +71,17 @@ async function handleVoiceMessage(message) {
             }
         );
 
-        console.log('Full Deepgram response:', JSON.stringify(response, null, 2));
+        console.log('Full Deepgram response:', JSON.stringify({ result, error }, null, 2));
 
-        if (!response || !response.results || !response.results.channels || response.results.channels.length === 0) {
+        if (error) {
+            throw new Error(`Deepgram API error: ${error.message}`);
+        }
+
+        if (!result || !result.results || !result.results.channels || result.results.channels.length === 0) {
             throw new Error('Unexpected Deepgram response structure');
         }
 
-        const transcribedText = response.results.channels[0].alternatives[0].transcript;
+        const transcribedText = result.results.channels[0].alternatives[0].transcript;
         console.log('Transcription received:', transcribedText);
 
         if (!transcribedText) {
