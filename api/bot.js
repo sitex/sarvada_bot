@@ -4,14 +4,14 @@ const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const { Deepgram } = require('@deepgram/sdk');
 
+console.log('Starting bot initialization...');
+
 // Load environment variables based on the environment
 if (process.env.VERCEL_URL) {
-    // We're on Vercel, environment variables are set in the Vercel dashboard
     console.log('Running on Vercel');
 } else {
-    // We're running locally, use dotenv to load environment variables
-    require('dotenv').config();
     console.log('Running locally');
+    require('dotenv').config();
 }
 
 // Initialize bot with your Telegram token
@@ -31,22 +31,29 @@ if (!TELEGRAM_BOT_TOKEN) {
 
 // Initialize Deepgram client
 const deepgramClient = new Deepgram(DEEPGRAM_API_KEY);
+console.log('Deepgram client initialized successfully');
 
 // Determine if we're running on Vercel
 const isVercel = process.env.VERCEL_URL !== undefined;
 
 let bot;
-if (isVercel) {
-    // Create a bot instance for Vercel (webhook mode)
-    bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
-    bot.setWebHook(`https://${process.env.VERCEL_URL}/api/bot`);
-} else {
-    // Create a bot instance for local development (polling mode)
-    bot = new TelegramBot(TELEGRAM_BOT_TOKEN, {
-        polling: true,
-        // Explicitly enable promise cancellation
-        cancellation: true
-    });
+try {
+    if (isVercel) {
+        // Create a bot instance for Vercel (webhook mode)
+        bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
+        bot.setWebHook(`https://${process.env.VERCEL_URL}/api/bot`);
+        console.log('Bot initialized in webhook mode');
+    } else {
+        // Create a bot instance for local development (polling mode)
+        bot = new TelegramBot(TELEGRAM_BOT_TOKEN, {
+            polling: true,
+            cancellation: true
+        });
+        console.log('Bot initialized in polling mode');
+    }
+} catch (error) {
+    console.error('Error initializing Telegram bot:', error);
+    throw error;
 }
 
 // Handler for voice messages
@@ -55,36 +62,38 @@ async function handleVoiceMessage(message) {
     const voiceFileId = message.voice.file_id;
 
     try {
-        // Inform the user that transcription is in progress
+        console.log('Received voice message, starting transcription process');
         await bot.sendMessage(chatId, 'Transcribing your voice message...');
 
-        // Get the file path of the voice message
         const voiceFilePath = await bot.getFileLink(voiceFileId);
+        console.log('Voice file path obtained:', voiceFilePath);
 
-        // Download the voice file
         const voiceFileResponse = await axios({
             method: 'get',
             url: voiceFilePath,
             responseType: 'arraybuffer'
         });
+        console.log('Voice file downloaded successfully');
 
-        // Prepare audio source for Deepgram
-        const audioSource = {
-            buffer: voiceFileResponse.data,
-            mimetype: 'audio/ogg'
-        };
+        console.log('Sending audio to Deepgram for transcription');
+        const { result, error } = await deepgramClient.listen.prerecorded.transcribeFile(
+            voiceFileResponse.data,
+            {
+                smart_format: true,
+                model: 'general',
+                mimetype: 'audio/ogg'
+            }
+        );
 
-        // Transcribe the audio using Deepgram
-        const transcriptionResponse = await deepgramClient.transcription.preRecorded(audioSource, {
-            smart_format: true,
-            model: 'general',
-        });
+        if (error) {
+            throw new Error(`Deepgram transcription error: ${error}`);
+        }
 
-        // Extract the transcribed text
-        const transcribedText = transcriptionResponse.results.channels[0].alternatives[0].transcript;
+        const transcribedText = result.results.channels[0].alternatives[0].transcript;
+        console.log('Transcription received:', transcribedText);
 
-        // Send the transcribed text back to the user
         await bot.sendMessage(chatId, `Transcription: ${transcribedText}`);
+        console.log('Transcription sent to user');
 
     } catch (error) {
         console.error('Error processing voice message:', error);
@@ -95,20 +104,25 @@ async function handleVoiceMessage(message) {
 // Set up the message handler
 bot.on('voice', handleVoiceMessage);
 
-// For local development
-if (!isVercel) {
-    console.log('Bot is running in polling mode (local development)');
-}
+console.log('Bot setup completed');
 
 // For Vercel serverless function
 module.exports = async (req, res) => {
+    console.log('Received request:', req.method);
     if (req.method === 'POST') {
-        const update = req.body;
-        if (update.message && update.message.voice) {
-            await handleVoiceMessage(update.message);
+        try {
+            const update = req.body;
+            console.log('Received update:', JSON.stringify(update));
+            if (update.message && update.message.voice) {
+                await handleVoiceMessage(update.message);
+            }
+            res.status(200).send('OK');
+        } catch (error) {
+            console.error('Error handling POST request:', error);
+            res.status(500).send('Internal Server Error');
         }
-        res.status(200).send('OK');
     } else {
+        console.log('Received GET request, sending OK response');
         res.status(200).send('Telegram Bot is active!');
     }
 };
