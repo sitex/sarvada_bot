@@ -67,7 +67,7 @@ async function handleVoiceMessage(message) {
             {
                 mimetype: 'audio/ogg',
                 smart_format: true,
-                model: 'general',
+                model: 'nova-2',
             }
         );
 
