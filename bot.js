@@ -7,7 +7,7 @@ console.log('Starting bot initialization...');
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB in bytes
+const MAX_FILE_SIZE = 30 * 1024 * 1024; // 30 MB in bytes
 
 if (!TELEGRAM_BOT_TOKEN) {
     throw new Error('TELEGRAM_BOT_TOKEN is not set in the environment variables');
