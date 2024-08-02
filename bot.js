@@ -26,7 +26,32 @@ const deepgramClient = createClient(DEEPGRAM_API_KEY);
 
 // Function to verify Telegram webhook
 function verifyTelegramWebhook(req) {
-    // ... (previous implementation remains the same)
+    console.log('Verifying webhook...');
+    console.log('Request method:', req.method);
+    console.log('Request headers:', JSON.stringify(req.headers, null, 2));
+
+    if (req.method !== 'POST') {
+        console.log('Webhook verification failed: Not a POST request');
+        return false;
+    }
+
+    const signatureHeader = req.headers['x-telegram-bot-api-secret-token'];
+    console.log('Received secret token:', signatureHeader);
+
+    if (!signatureHeader) {
+        console.log('Webhook verification failed: Missing secret token header');
+        return false;
+    }
+
+    const secretToken = crypto.createHash('sha256')
+        .update(TELEGRAM_BOT_TOKEN)
+        .digest('hex');
+    console.log('Calculated secret token:', secretToken);
+
+    const isValid = signatureHeader === secretToken;
+    console.log('Webhook verification result:', isValid ? 'Success' : 'Failure');
+
+    return isValid;
 }
 
 async function handleVoiceMessage(message) {
@@ -112,6 +137,8 @@ async function handleVoiceMessage(message) {
 // For Vercel serverless function
 module.exports = async (req, res) => {
     console.log('Received request:', req.method);
+    console.log('Request headers:', JSON.stringify(req.headers, null, 2));
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
 
     if (!verifyTelegramWebhook(req)) {
         console.error('Webhook verification failed');
