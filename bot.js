@@ -7,7 +7,7 @@ console.log('Starting bot initialization...');
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
-const MAX_FILE_SIZE = 30 * 1024 * 1024; // 30 MB in bytes
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB in bytes (Telegram's limit)
 
 if (!TELEGRAM_BOT_TOKEN) {
     throw new Error('TELEGRAM_BOT_TOKEN is not set in the environment variables');
@@ -213,7 +213,14 @@ async function handleVoiceMessage(message) {
     } catch (error) {
         console.error('Error processing voice message:', error);
         console.error('Error stack:', error.stack);
-        await bot.sendMessage(chatId, `Извините, произошла ошибка при обработке вашего голосового сообщения: ${error.message}`);
+
+        let errorMessage = 'Извините, произошла ошибка при обработке вашего голосового сообщения.';
+
+        if (error.message.includes('file is too big')) {
+            errorMessage = `Извините, размер файла слишком большой для обработки. Максимальный размер файла: ${MAX_FILE_SIZE / (1024 * 1024)} МБ.`;
+        }
+
+        await bot.sendMessage(chatId, errorMessage);
     }
 }
 
