@@ -81,7 +81,7 @@ async function handleVoiceMessage(message) {
                 mimetype: 'audio/ogg',
                 smart_format: true,
                 model: 'nova-2',
-                language: 'en,ru',
+                // language: 'en,ru',
                 detect_language: true
             }
         );
