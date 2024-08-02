@@ -1,5 +1,3 @@
-// bot.js
-
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const { createClient } = require("@deepgram/sdk");
@@ -61,9 +59,14 @@ async function sendLongMessage(chatId, text) {
     while (text.length > 0) {
         if (text.length > maxLength) {
             let part = text.substr(0, maxLength);
-            let lastSpace = part.lastIndexOf(' ');
-            if (lastSpace > 0) {
-                part = part.substr(0, lastSpace);
+            let lastParagraph = part.lastIndexOf('\n\n');
+            if (lastParagraph > 0) {
+                part = part.substr(0, lastParagraph);
+            } else {
+                let lastSpace = part.lastIndexOf(' ');
+                if (lastSpace > 0) {
+                    part = part.substr(0, lastSpace);
+                }
             }
             parts.push(part);
             text = text.substr(part.length);
@@ -74,7 +77,7 @@ async function sendLongMessage(chatId, text) {
     }
 
     for (let i = 0; i < parts.length; i++) {
-        await bot.sendMessage(chatId, `Part ${i + 1}/${parts.length}:\n\n${parts[i]}`);
+        await bot.sendMessage(chatId, parts[i], { parse_mode: 'Markdown' });
     }
 }
 
@@ -106,7 +109,6 @@ async function handleVoiceMessage(message) {
                 smart_format: true,
                 paragraph: true,
                 model: 'nova-2',
-                // language: 'en,ru',
                 detect_language: true
             }
         );
@@ -134,19 +136,12 @@ async function handleVoiceMessage(message) {
 
         let responseMessage = '';
 
-        if (detectedLanguage === 'en-US') {
-            responseMessage += 'Detected language: English\n';
-        } else if (detectedLanguage === 'ru-RU') {
-            responseMessage += 'Detected language: Russian\n';
-        } else {
-            responseMessage += `Detected language: ${detectedLanguage}\n`;
-        }
-
-        responseMessage += `Confidence: ${(confidence * 100).toFixed(2)}%\n\n`;
-        responseMessage += `Transcription: ${transcribedText}`;
+        responseMessage += `*Detected language:* ${getLanguageName(detectedLanguage)}\n\n`;
+        responseMessage += `*Confidence:* ${(confidence * 100).toFixed(2)}%\n\n`;
+        responseMessage += `*Transcription:*\n\n${formatTranscription(transcribedText)}`;
 
         if (confidence < 0.6) {
-            responseMessage += '\n\nNote: The transcription confidence is low. The result might not be accurate.';
+            responseMessage += '\n\n_Note: The transcription confidence is low. The result might not be accurate._';
         }
 
         await sendLongMessage(chatId, responseMessage);
@@ -157,6 +152,31 @@ async function handleVoiceMessage(message) {
         console.error('Error stack:', error.stack);
         await bot.sendMessage(chatId, `Sorry, there was an error processing your voice message: ${error.message}`);
     }
+}
+
+function getLanguageName(languageCode) {
+    switch (languageCode) {
+        case 'en-US':
+            return 'English';
+        case 'ru-RU':
+            return 'Russian';
+        default:
+            return languageCode;
+    }
+}
+
+function formatTranscription(text) {
+    // Split the text into sentences
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+
+    // Group sentences into paragraphs (e.g., 3 sentences per paragraph)
+    const paragraphs = [];
+    for (let i = 0; i < sentences.length; i += 3) {
+        paragraphs.push(sentences.slice(i, i + 3).join(' '));
+    }
+
+    // Join paragraphs with double line breaks
+    return paragraphs.join('\n\n');
 }
 
 // For Vercel serverless function
