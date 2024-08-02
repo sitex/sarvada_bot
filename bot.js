@@ -54,6 +54,30 @@ function verifyTelegramWebhook(req) {
     return isValid;
 }
 
+async function sendLongMessage(chatId, text) {
+    const maxLength = 4000; // Leave some room for formatting
+    const parts = [];
+
+    while (text.length > 0) {
+        if (text.length > maxLength) {
+            let part = text.substr(0, maxLength);
+            let lastSpace = part.lastIndexOf(' ');
+            if (lastSpace > 0) {
+                part = part.substr(0, lastSpace);
+            }
+            parts.push(part);
+            text = text.substr(part.length);
+        } else {
+            parts.push(text);
+            break;
+        }
+    }
+
+    for (let i = 0; i < parts.length; i++) {
+        await bot.sendMessage(chatId, `Part ${i + 1}/${parts.length}:\n\n${parts[i]}`);
+    }
+}
+
 async function handleVoiceMessage(message) {
     const chatId = message.chat.id;
     const voiceFileId = message.voice.file_id;
@@ -109,22 +133,22 @@ async function handleVoiceMessage(message) {
 
         let responseMessage = '';
 
-        if (detectedLanguage === 'en') {
+        if (detectedLanguage === 'en-US') {
             responseMessage += 'Detected language: English\n';
-        } else if (detectedLanguage === 'ru') {
+        } else if (detectedLanguage === 'ru-RU') {
             responseMessage += 'Detected language: Russian\n';
         } else {
             responseMessage += `Detected language: ${detectedLanguage}\n`;
         }
 
-        responseMessage += `Confidence: ${(confidence * 100).toFixed(2)}%\n`;
+        responseMessage += `Confidence: ${(confidence * 100).toFixed(2)}%\n\n`;
         responseMessage += `Transcription: ${transcribedText}`;
 
         if (confidence < 0.6) {
             responseMessage += '\n\nNote: The transcription confidence is low. The result might not be accurate.';
         }
 
-        await bot.sendMessage(chatId, responseMessage);
+        await sendLongMessage(chatId, responseMessage);
         console.log('Transcription sent to user');
 
     } catch (error) {
