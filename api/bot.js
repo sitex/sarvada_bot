@@ -2,7 +2,7 @@
 
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
-const { Deepgram } = require('@deepgram/sdk');
+const { createClient } = require("@deepgram/sdk");
 
 console.log('Starting bot initialization...');
 
@@ -30,7 +30,7 @@ if (!TELEGRAM_BOT_TOKEN) {
 }
 
 // Initialize Deepgram client
-const deepgramClient = new Deepgram(DEEPGRAM_API_KEY);
+const deepgramClient = createClient(DEEPGRAM_API_KEY);
 console.log('Deepgram client initialized successfully');
 
 // Determine if we're running on Vercel
