@@ -22,6 +22,44 @@ console.log('DEEPGRAM_API_KEY:', DEEPGRAM_API_KEY ? 'Set' : 'Not set');
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
 const deepgramClient = createClient(DEEPGRAM_API_KEY);
 
+// Simple in-memory cache
+const cache = new Map();
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+
+// Function to generate a cache key
+function generateCacheKey(voiceFileId, options) {
+    const optionsString = JSON.stringify(options);
+    return crypto.createHash('md5').update(`${voiceFileId}:${optionsString}`).digest('hex');
+}
+
+// Function to get cached result or transcribe with Deepgram
+async function getTranscription(voiceFileId, audioBuffer, options) {
+    const cacheKey = generateCacheKey(voiceFileId, options);
+
+    if (cache.has(cacheKey)) {
+        console.log('Cache hit for:', cacheKey);
+        return cache.get(cacheKey);
+    }
+
+    console.log('Cache miss for:', cacheKey);
+    console.log('Sending audio to Deepgram for transcription');
+    const { result, error } = await deepgramClient.listen.prerecorded.transcribeFile(
+        audioBuffer,
+        options
+    );
+
+    if (error) {
+        console.error('Deepgram API error:', error);
+        throw new Error(`Deepgram API error: ${error.message}`);
+    }
+
+    // Cache the result
+    cache.set(cacheKey, result);
+    setTimeout(() => cache.delete(cacheKey), CACHE_TTL);
+
+    return result;
+}
+
 // Function to verify Telegram webhook
 function verifyTelegramWebhook(req) {
     console.log('Verifying webhook...');
@@ -101,24 +139,17 @@ async function handleVoiceMessage(message) {
         });
         console.log('Voice file downloaded. Size:', voiceFileResponse.data.length, 'bytes');
 
-        console.log('Sending audio to Deepgram for transcription');
-        const { result, error } = await deepgramClient.listen.prerecorded.transcribeFile(
-            voiceFileResponse.data,
-            {
-                mimetype: 'audio/ogg',
-                smart_format: true,
-                paragraph: true,
-                model: 'nova-2',
-                detect_language: true
-            }
-        );
+        const transcriptionOptions = {
+            mimetype: 'audio/ogg',
+            smart_format: true,
+            paragraph: true,
+            model: 'nova-2',
+            detect_language: true
+        };
 
-        if (error) {
-            console.error('Deepgram API error:', error);
-            throw new Error(`Deepgram API error: ${error.message}`);
-        }
+        const result = await getTranscription(voiceFileId, voiceFileResponse.data, transcriptionOptions);
 
-        console.log('Deepgram response received');
+        console.log('Transcription received');
         console.log('Full Deepgram response:', JSON.stringify(result, null, 2));
 
         if (!result || !result.results || !result.results.channels || result.results.channels.length === 0) {
@@ -130,7 +161,7 @@ async function handleVoiceMessage(message) {
         const confidence = result.results.channels[0].alternatives[0].confidence;
         const detectedLanguage = result.results.channels[0].detected_language;
 
-        console.log('Transcription received:', transcribedText);
+        console.log('Transcription:', transcribedText);
         console.log('Confidence:', confidence);
         console.log('Detected language:', detectedLanguage);
 
