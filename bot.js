@@ -7,6 +7,7 @@ console.log('Starting bot initialization...');
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB in bytes
 
 if (!TELEGRAM_BOT_TOKEN) {
     throw new Error('TELEGRAM_BOT_TOKEN is not set in the environment variables');
@@ -137,13 +138,26 @@ async function sendLongMessage(chatId, text) {
     }
 }
 
+// Function to check if file size is within limits
+function isFileSizeValid(fileSize) {
+    return fileSize <= MAX_FILE_SIZE;
+}
+
 async function handleVoiceMessage(message) {
     const chatId = message.chat.id;
     const voiceFileId = message.voice.file_id;
+    const fileSize = message.voice.file_size;
 
     try {
-        console.log('Processing voice message. File ID:', voiceFileId);
-        await bot.sendMessage(chatId, 'Transcribing your voice message...');
+        console.log('Processing voice message. File ID:', voiceFileId, 'File Size:', fileSize);
+
+        if (!isFileSizeValid(fileSize)) {
+            console.log('File size exceeds the limit');
+            await bot.sendMessage(chatId, `Извините, размер файла превышает ограничение в ${MAX_FILE_SIZE / (1024 * 1024)} МБ. Пожалуйста, отправьте файл меньшего размера.`);
+            return;
+        }
+
+        await bot.sendMessage(chatId, 'Транскрибирую ваше голосовое сообщение...');
 
         console.log('Attempting to get file link...');
         const voiceFileLink = await bot.getFileLink(voiceFileId);
@@ -185,12 +199,12 @@ async function handleVoiceMessage(message) {
 
         let responseMessage = '';
 
-        responseMessage += `*Detected language:* ${getLanguageName(detectedLanguage)}\n\n`;
-        responseMessage += `*Confidence:* ${(confidence * 100).toFixed(2)}%\n\n`;
-        responseMessage += `*Transcription:*\n\n${formatTranscription(transcribedText)}`;
+        responseMessage += `*Определен язык:* ${getLanguageName(detectedLanguage)}\n\n`;
+        responseMessage += `*Уверенность:* ${(confidence * 100).toFixed(2)}%\n\n`;
+        responseMessage += `*Транскрипция:*\n\n${formatTranscription(transcribedText)}`;
 
         if (confidence < 0.6) {
-            responseMessage += '\n\n_Note: The transcription confidence is low. The result might not be accurate._';
+            responseMessage += '\n\n_Примечание: Уверенность в транскрипции низкая. Результат может быть неточным._';
         }
 
         await sendLongMessage(chatId, responseMessage);
@@ -199,16 +213,16 @@ async function handleVoiceMessage(message) {
     } catch (error) {
         console.error('Error processing voice message:', error);
         console.error('Error stack:', error.stack);
-        await bot.sendMessage(chatId, `Sorry, there was an error processing your voice message: ${error.message}`);
+        await bot.sendMessage(chatId, `Извините, произошла ошибка при обработке вашего голосового сообщения: ${error.message}`);
     }
 }
 
 function getLanguageName(languageCode) {
     switch (languageCode) {
         case 'en-US':
-            return 'English';
+            return 'Английский';
         case 'ru-RU':
-            return 'Russian';
+            return 'Русский';
         default:
             return languageCode;
     }
@@ -250,14 +264,14 @@ module.exports = async (req, res) => {
             } else if (message.text) {
                 if (message.text.toLowerCase() === '/cachestatus') {
                     const status = getCacheStatus();
-                    await bot.sendMessage(message.chat.id, `Cache status:\nSize: ${status.size}\nHits: ${status.hits}`);
+                    await bot.sendMessage(message.chat.id, `Статус кэша:\nРазмер: ${status.size}\nПопаданий: ${status.hits}`);
                 } else {
-                    await bot.sendMessage(message.chat.id, `You said: ${message.text}`);
+                    await bot.sendMessage(message.chat.id, `Вы сказали: ${message.text}`);
                     console.log('Echo sent to user');
                 }
             } else {
                 console.log('Received unsupported message type');
-                await bot.sendMessage(message.chat.id, 'Please send a voice message for transcription.');
+                await bot.sendMessage(message.chat.id, 'Пожалуйста, отправьте голосовое сообщение для транскрибации.');
             }
 
             res.status(200).send('OK');
