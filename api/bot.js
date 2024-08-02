@@ -3,7 +3,16 @@
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const { Deepgram } = require('@deepgram/sdk');
-require('dotenv').config();
+
+// Load environment variables based on the environment
+if (process.env.VERCEL_URL) {
+    // We're on Vercel, environment variables are set in the Vercel dashboard
+    console.log('Running on Vercel');
+} else {
+    // We're running locally, use dotenv to load environment variables
+    require('dotenv').config();
+    console.log('Running locally');
+}
 
 // Initialize bot with your Telegram token
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -16,10 +25,14 @@ if (!DEEPGRAM_API_KEY) {
     throw new Error('DEEPGRAM_API_KEY is not set in the environment variables');
 }
 
+if (!TELEGRAM_BOT_TOKEN) {
+    throw new Error('TELEGRAM_BOT_TOKEN is not set in the environment variables');
+}
+
 // Initialize Deepgram client
 const deepgramClient = new Deepgram(DEEPGRAM_API_KEY);
 
-// Determine if we're running locally or on Vercel
+// Determine if we're running on Vercel
 const isVercel = process.env.VERCEL_URL !== undefined;
 
 let bot;
