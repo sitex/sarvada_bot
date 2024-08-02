@@ -1,5 +1,3 @@
-// bot.js
-
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const { createClient } = require("@deepgram/sdk");
@@ -68,6 +66,8 @@ async function handleVoiceMessage(message) {
                 mimetype: 'audio/ogg',
                 smart_format: true,
                 model: 'nova-2',
+                language: 'en,ru',  // Specify both English and Russian
+                detect_language: true
             }
         );
 
@@ -82,13 +82,31 @@ async function handleVoiceMessage(message) {
         }
 
         const transcribedText = result.results.channels[0].alternatives[0].transcript;
-        console.log('Transcription received:', transcribedText);
+        const confidence = result.results.channels[0].alternatives[0].confidence;
+        const detectedLanguage = result.results.channels[0].detected_language;
 
-        if (!transcribedText) {
-            await bot.sendMessage(chatId, 'Sorry, the transcription was empty. Please try speaking more clearly or in a quieter environment.');
+        console.log('Transcription received:', transcribedText);
+        console.log('Confidence:', confidence);
+        console.log('Detected language:', detectedLanguage);
+
+        let responseMessage = '';
+
+        if (detectedLanguage === 'en') {
+            responseMessage += 'Detected language: English\n';
+        } else if (detectedLanguage === 'ru') {
+            responseMessage += 'Detected language: Russian\n';
         } else {
-            await bot.sendMessage(chatId, `Transcription: ${transcribedText}`);
+            responseMessage += `Detected language: ${detectedLanguage}\n`;
         }
+
+        responseMessage += `Confidence: ${(confidence * 100).toFixed(2)}%\n`;
+        responseMessage += `Transcription: ${transcribedText}`;
+
+        if (confidence < 0.6) {
+            responseMessage += '\n\nNote: The transcription confidence is low. The result might not be accurate.';
+        }
+
+        await bot.sendMessage(chatId, responseMessage);
         console.log('Transcription sent to user');
 
     } catch (error) {
