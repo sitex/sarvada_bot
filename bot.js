@@ -26,18 +26,28 @@ const deepgramClient = createClient(DEEPGRAM_API_KEY);
 const cache = new Map();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
-// Function to generate a cache key
-function generateCacheKey(voiceFileId, options) {
+// Cache hit counter
+let cacheHits = 0;
+
+// Function to generate a cache key based on file hash and options
+function generateCacheKey(fileHash, options) {
     const optionsString = JSON.stringify(options);
-    return crypto.createHash('md5').update(`${voiceFileId}:${optionsString}`).digest('hex');
+    return crypto.createHash('md5').update(`${fileHash}:${optionsString}`).digest('hex');
+}
+
+// Function to calculate file hash
+function calculateFileHash(buffer) {
+    return crypto.createHash('md5').update(buffer).digest('hex');
 }
 
 // Function to get cached result or transcribe with Deepgram
-async function getTranscription(voiceFileId, audioBuffer, options) {
-    const cacheKey = generateCacheKey(voiceFileId, options);
+async function getTranscription(audioBuffer, options) {
+    const fileHash = calculateFileHash(audioBuffer);
+    const cacheKey = generateCacheKey(fileHash, options);
 
     if (cache.has(cacheKey)) {
         console.log('Cache hit for:', cacheKey);
+        cacheHits++;
         return cache.get(cacheKey);
     }
 
@@ -58,6 +68,14 @@ async function getTranscription(voiceFileId, audioBuffer, options) {
     setTimeout(() => cache.delete(cacheKey), CACHE_TTL);
 
     return result;
+}
+
+// Function to get cache status
+function getCacheStatus() {
+    return {
+        size: cache.size,
+        hits: cacheHits
+    };
 }
 
 // Function to verify Telegram webhook
@@ -147,7 +165,7 @@ async function handleVoiceMessage(message) {
             detect_language: true
         };
 
-        const result = await getTranscription(voiceFileId, voiceFileResponse.data, transcriptionOptions);
+        const result = await getTranscription(voiceFileResponse.data, transcriptionOptions);
 
         console.log('Transcription received');
         console.log('Full Deepgram response:', JSON.stringify(result, null, 2));
@@ -203,7 +221,8 @@ function formatTranscription(text) {
     // Group sentences into paragraphs (e.g., 3 sentences per paragraph)
     const paragraphs = [];
     for (let i = 0; i < sentences.length; i += 3) {
-        paragraphs.push(sentences.slice(i, i + 3).join(' '));
+        const paragraph = sentences.slice(i, i + 3).join(' ').trim();
+        paragraphs.push(paragraph);
     }
 
     // Join paragraphs with double line breaks
@@ -229,8 +248,13 @@ module.exports = async (req, res) => {
             if (message.voice) {
                 await handleVoiceMessage(message);
             } else if (message.text) {
-                await bot.sendMessage(message.chat.id, `You said: ${message.text}`);
-                console.log('Echo sent to user');
+                if (message.text.toLowerCase() === '/cachestatus') {
+                    const status = getCacheStatus();
+                    await bot.sendMessage(message.chat.id, `Cache status:\nSize: ${status.size}\nHits: ${status.hits}`);
+                } else {
+                    await bot.sendMessage(message.chat.id, `You said: ${message.text}`);
+                    console.log('Echo sent to user');
+                }
             } else {
                 console.log('Received unsupported message type');
                 await bot.sendMessage(message.chat.id, 'Please send a voice message for transcription.');
