@@ -2,17 +2,17 @@ import TelegramBot from 'node-telegram-bot-api';
 import axios from 'axios';
 import { createClient } from "@deepgram/sdk";
 import crypto from 'crypto';
-import ffmpeg from 'fluent-ffmpeg';
+import { exec } from 'child_process';
 import stream from 'stream';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
+import util from 'util';
+
+const execPromise = util.promisify(exec);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Set the path to the FFmpeg binary
-const ffmpegPath = path.join(__dirname, '..', 'bin', 'ffmpeg');
-ffmpeg.setFfmpegPath(ffmpegPath);
 
 console.log('Starting bot initialization...');
 
@@ -33,6 +33,11 @@ console.log('DEEPGRAM_API_KEY:', DEEPGRAM_API_KEY ? 'Set' : 'Not set');
 
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
 const deepgramClient = createClient(DEEPGRAM_API_KEY);
+
+// Set the path to the FFmpeg binary
+const ffmpegPath = path.join(__dirname, 'bin', 'ffmpeg');
+console.log('FFmpeg path:', ffmpegPath);
+console.log('FFmpeg exists:', fs.existsSync(ffmpegPath));
 
 // Simple in-memory cache
 const cache = new Map();
@@ -155,28 +160,25 @@ function isFileSizeValid(fileSize) {
 }
 
 async function extractAudioFromVideo(videoBuffer) {
-    return new Promise((resolve, reject) => {
-        const inputStream = stream.Readable.from(videoBuffer);
-        const outputStream = new stream.PassThrough();
-        let outputBuffer = Buffer.alloc(0);
+    const inputPath = path.join('/tmp', `input_${Date.now()}.mp4`);
+    const outputPath = path.join('/tmp', `output_${Date.now()}.aac`);
 
-        ffmpeg(inputStream)
-            .noVideo()
-            .audioCodec('copy')  // Copy audio without re-encoding
-            .format('mp4')  // Use MP4 container to maintain compatibility
-            .on('error', (err) => {
-                console.error('Error during audio extraction:', err);
-                reject(err);
-            })
-            .on('end', () => {
-                resolve(outputBuffer);
-            })
-            .pipe(outputStream);
+    fs.writeFileSync(inputPath, videoBuffer);
 
-        outputStream.on('data', (chunk) => {
-            outputBuffer = Buffer.concat([outputBuffer, chunk]);
-        });
-    });
+    try {
+        await execPromise(`${ffmpegPath} -i ${inputPath} -vn -acodec copy ${outputPath}`);
+        const audioBuffer = fs.readFileSync(outputPath);
+        fs.unlinkSync(inputPath);
+        fs.unlinkSync(outputPath);
+        return audioBuffer;
+    } catch (error) {
+        console.error('Error during audio extraction:', error);
+        fs.unlinkSync(inputPath);
+        if (fs.existsSync(outputPath)) {
+            fs.unlinkSync(outputPath);
+        }
+        throw error;
+    }
 }
 
 async function handleMediaMessage(message) {
@@ -225,7 +227,7 @@ async function handleMediaMessage(message) {
             console.log('Extracting audio from video...');
             audioBuffer = await extractAudioFromVideo(fileResponse.data);
             console.log('Audio extracted. Size:', audioBuffer.length, 'bytes');
-            mimeType = 'audio/mp4'; // Update mimeType for extracted audio
+            mimeType = 'audio/aac'; // Update mimeType for extracted audio
         }
 
         const transcriptionOptions = {
