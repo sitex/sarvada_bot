@@ -4,8 +4,9 @@
   "description": "A Telegram bot for voice transcription using Deepgram",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js",
-    "dev": "nodemon bot.js"
+    "start": "node bot.mjs",
+    "dev": "nodemon bot.mjs",
+    "vercel-build": "bash ./vercel-build.sh"
   },
   "dependencies": {
     "@deepgram/sdk": "^3.0.0",

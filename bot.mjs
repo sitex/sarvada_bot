@@ -2,6 +2,8 @@ import TelegramBot from 'node-telegram-bot-api';
 import axios from 'axios';
 import { createClient } from "@deepgram/sdk";
 import crypto from 'crypto';
+import ffmpeg from 'fluent-ffmpeg';
+import stream from 'stream';
 
 console.log('Starting bot initialization...');
 
@@ -144,22 +146,28 @@ function isFileSizeValid(fileSize) {
 }
 
 async function extractAudioFromVideo(videoBuffer) {
-    // Dynamically import FFmpeg
-    const { FFmpeg } = await import('@ffmpeg/ffmpeg');
-    const { fetchFile, toBlobURL } = await import('@ffmpeg/util');
+    return new Promise((resolve, reject) => {
+        const inputStream = stream.Readable.from(videoBuffer);
+        const outputStream = new stream.PassThrough();
+        let outputBuffer = Buffer.alloc(0);
 
-    const ffmpeg = new FFmpeg();
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.2/dist/umd'
-    await ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+        ffmpeg(inputStream)
+            .noVideo()
+            .audioCodec('copy')  // Copy audio without re-encoding
+            .format('mp4')  // Use MP4 container to maintain compatibility
+            .on('error', (err) => {
+                console.error('Error during audio extraction:', err);
+                reject(err);
+            })
+            .on('end', () => {
+                resolve(outputBuffer);
+            })
+            .pipe(outputStream);
+
+        outputStream.on('data', (chunk) => {
+            outputBuffer = Buffer.concat([outputBuffer, chunk]);
+        });
     });
-
-    await ffmpeg.writeFile('input.mp4', await fetchFile(videoBuffer));
-    await ffmpeg.exec(['-i', 'input.mp4', '-vn', '-acodec', 'copy', 'output.aac']);
-    const data = await ffmpeg.readFile('output.aac');
-
-    return new Uint8Array(data);
 }
 
 async function handleMediaMessage(message) {
@@ -208,7 +216,7 @@ async function handleMediaMessage(message) {
             console.log('Extracting audio from video...');
             audioBuffer = await extractAudioFromVideo(fileResponse.data);
             console.log('Audio extracted. Size:', audioBuffer.length, 'bytes');
-            mimeType = 'audio/aac'; // Update mimeType for extracted audio
+            mimeType = 'audio/mp4'; // Update mimeType for extracted audio
         }
 
         const transcriptionOptions = {
