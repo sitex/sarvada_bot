@@ -4,6 +4,15 @@ import { createClient } from "@deepgram/sdk";
 import crypto from 'crypto';
 import ffmpeg from 'fluent-ffmpeg';
 import stream from 'stream';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Set the path to the FFmpeg binary
+const ffmpegPath = path.join(__dirname, '..', 'bin', 'ffmpeg');
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 console.log('Starting bot initialization...');
 

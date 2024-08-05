@@ -5,8 +5,7 @@
   "main": "bot.js",
   "scripts": {
     "start": "node bot.mjs",
-    "dev": "nodemon bot.mjs",
-    "vercel-build": "bash ./vercel-build.sh"
+    "dev": "nodemon bot.mjs"
   },
   "dependencies": {
     "@deepgram/sdk": "^3.0.0",
