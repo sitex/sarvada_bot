@@ -1,9 +1,7 @@
-const TelegramBot = require('node-telegram-bot-api');
-const axios = require('axios');
-const { createClient } = require("@deepgram/sdk");
-const crypto = require('crypto');
-const { FFmpeg } = require('@ffmpeg/ffmpeg');
-const { fetchFile, toBlobURL } = require('@ffmpeg/util');
+import TelegramBot from 'node-telegram-bot-api';
+import axios from 'axios';
+import { createClient } from "@deepgram/sdk";
+import crypto from 'crypto';
 
 console.log('Starting bot initialization...');
 
@@ -146,6 +144,10 @@ function isFileSizeValid(fileSize) {
 }
 
 async function extractAudioFromVideo(videoBuffer) {
+    // Dynamically import FFmpeg
+    const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+    const { fetchFile, toBlobURL } = await import('@ffmpeg/util');
+
     const ffmpeg = new FFmpeg();
     const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.2/dist/umd'
     await ffmpeg.load({
@@ -289,7 +291,7 @@ function formatTranscription(text) {
 }
 
 // For Vercel serverless function
-module.exports = async (req, res) => {
+export default async (req, res) => {
     console.log('Received request:', req.method);
     console.log('Request headers:', JSON.stringify(req.headers, null, 2));
     console.log('Request body:', JSON.stringify(req.body, null, 2));
