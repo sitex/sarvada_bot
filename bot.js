@@ -2,6 +2,8 @@ const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const { createClient } = require("@deepgram/sdk");
 const crypto = require('crypto');
+const { FFmpeg } = require('@ffmpeg/ffmpeg');
+const { fetchFile, toBlobURL } = require('@ffmpeg/util');
 
 console.log('Starting bot initialization...');
 
@@ -143,13 +145,41 @@ function isFileSizeValid(fileSize) {
     return fileSize <= MAX_FILE_SIZE;
 }
 
-async function handleVoiceMessage(message) {
+async function extractAudioFromVideo(videoBuffer) {
+    const ffmpeg = new FFmpeg();
+    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.2/dist/umd'
+    await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    });
+
+    await ffmpeg.writeFile('input.mp4', await fetchFile(videoBuffer));
+    await ffmpeg.exec(['-i', 'input.mp4', '-vn', '-acodec', 'copy', 'output.aac']);
+    const data = await ffmpeg.readFile('output.aac');
+
+    return new Uint8Array(data);
+}
+
+async function handleMediaMessage(message) {
     const chatId = message.chat.id;
-    const voiceFileId = message.voice.file_id;
-    const fileSize = message.voice.file_size;
+    let fileId, fileSize, mediaType, mimeType;
+
+    if (message.voice) {
+        fileId = message.voice.file_id;
+        fileSize = message.voice.file_size;
+        mediaType = 'voice';
+        mimeType = 'audio/ogg';
+    } else if (message.video) {
+        fileId = message.video.file_id;
+        fileSize = message.video.file_size;
+        mediaType = 'video';
+        mimeType = 'video/mp4';
+    } else {
+        throw new Error('Unsupported media type');
+    }
 
     try {
-        console.log('Processing voice message. File ID:', voiceFileId, 'File Size:', fileSize);
+        console.log(`Processing ${mediaType} message. File ID:`, fileId, 'File Size:', fileSize);
 
         if (!isFileSizeValid(fileSize)) {
             console.log('File size exceeds the limit');
@@ -157,29 +187,37 @@ async function handleVoiceMessage(message) {
             return;
         }
 
-        await bot.sendMessage(chatId, 'Транскрибирую ваше голосовое сообщение...');
+        await bot.sendMessage(chatId, `Транскрибирую ваше ${mediaType === 'voice' ? 'голосовое сообщение' : 'видео'}...`);
 
         console.log('Attempting to get file link...');
-        const voiceFileLink = await bot.getFileLink(voiceFileId);
-        console.log('Voice file link obtained:', voiceFileLink);
+        const fileLink = await bot.getFileLink(fileId);
+        console.log('File link obtained:', fileLink);
 
-        console.log('Downloading voice file...');
-        const voiceFileResponse = await axios({
+        console.log('Downloading file...');
+        const fileResponse = await axios({
             method: 'get',
-            url: voiceFileLink,
+            url: fileLink,
             responseType: 'arraybuffer'
         });
-        console.log('Voice file downloaded. Size:', voiceFileResponse.data.length, 'bytes');
+        console.log('File downloaded. Size:', fileResponse.data.length, 'bytes');
+
+        let audioBuffer = fileResponse.data;
+        if (mediaType === 'video') {
+            console.log('Extracting audio from video...');
+            audioBuffer = await extractAudioFromVideo(fileResponse.data);
+            console.log('Audio extracted. Size:', audioBuffer.length, 'bytes');
+            mimeType = 'audio/aac'; // Update mimeType for extracted audio
+        }
 
         const transcriptionOptions = {
-            mimetype: 'audio/ogg',
+            mimetype: mimeType,
             smart_format: true,
             paragraph: true,
             model: 'nova-2',
             detect_language: true
         };
 
-        const result = await getTranscription(voiceFileResponse.data, transcriptionOptions);
+        const result = await getTranscription(audioBuffer, transcriptionOptions);
 
         console.log('Transcription received');
         console.log('Full Deepgram response:', JSON.stringify(result, null, 2));
@@ -211,10 +249,10 @@ async function handleVoiceMessage(message) {
         console.log('Transcription sent to user');
 
     } catch (error) {
-        console.error('Error processing voice message:', error);
+        console.error('Error processing media message:', error);
         console.error('Error stack:', error.stack);
 
-        let errorMessage = 'Извините, произошла ошибка при обработке вашего голосового сообщения.';
+        let errorMessage = `Извините, произошла ошибка при обработке вашего ${mediaType === 'voice' ? 'голосового сообщения' : 'видео'}.`;
 
         if (error.message.includes('file is too big')) {
             errorMessage = `Извините, размер файла слишком большой для обработки. Максимальный размер файла: ${MAX_FILE_SIZE / (1024 * 1024)} МБ.`;
@@ -266,8 +304,8 @@ module.exports = async (req, res) => {
             const { message } = req.body;
             console.log('Received message:', JSON.stringify(message));
 
-            if (message.voice) {
-                await handleVoiceMessage(message);
+            if (message.voice || message.video) {
+                await handleMediaMessage(message);
             } else if (message.text) {
                 if (message.text.toLowerCase() === '/cachestatus') {
                     const status = getCacheStatus();
@@ -278,7 +316,7 @@ module.exports = async (req, res) => {
                 }
             } else {
                 console.log('Received unsupported message type');
-                await bot.sendMessage(message.chat.id, 'Пожалуйста, отправьте голосовое сообщение для транскрибации.');
+                await bot.sendMessage(message.chat.id, 'Пожалуйста, отправьте голосовое сообщение или видео для транскрибации.');
             }
 
             res.status(200).send('OK');

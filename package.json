@@ -8,10 +8,12 @@
     "dev": "nodemon bot.js"
   },
   "dependencies": {
+    "@deepgram/sdk": "^3.0.0",
+    "@ffmpeg/ffmpeg": "^0.12.10",
+    "@ffmpeg/util": "^0.12.1",
     "axios": "^1.4.0",
     "dotenv": "^16.3.1",
-    "node-telegram-bot-api": "^0.61.0",
-    "@deepgram/sdk": "^3.0.0"
+    "node-telegram-bot-api": "^0.61.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
