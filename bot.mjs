@@ -2,17 +2,6 @@ import TelegramBot from 'node-telegram-bot-api';
 import axios from 'axios';
 import { createClient } from "@deepgram/sdk";
 import crypto from 'crypto';
-import { exec } from 'child_process';
-import stream from 'stream';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import fs from 'fs';
-import util from 'util';
-
-const execPromise = util.promisify(exec);
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 console.log('Starting bot initialization...');
 
@@ -33,67 +22,6 @@ console.log('DEEPGRAM_API_KEY:', DEEPGRAM_API_KEY ? 'Set' : 'Not set');
 
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
 const deepgramClient = createClient(DEEPGRAM_API_KEY);
-
-// Set the path to the FFmpeg binary
-const ffmpegPath = path.join(__dirname, 'bin', 'ffmpeg');
-console.log('FFmpeg path:', ffmpegPath);
-console.log('FFmpeg exists:', fs.existsSync(ffmpegPath));
-
-// Simple in-memory cache
-const cache = new Map();
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-
-// Cache hit counter
-let cacheHits = 0;
-
-// Function to generate a cache key based on file hash and options
-function generateCacheKey(fileHash, options) {
-    const optionsString = JSON.stringify(options);
-    return crypto.createHash('md5').update(`${fileHash}:${optionsString}`).digest('hex');
-}
-
-// Function to calculate file hash
-function calculateFileHash(buffer) {
-    return crypto.createHash('md5').update(buffer).digest('hex');
-}
-
-// Function to get cached result or transcribe with Deepgram
-async function getTranscription(audioBuffer, options) {
-    const fileHash = calculateFileHash(audioBuffer);
-    const cacheKey = generateCacheKey(fileHash, options);
-
-    if (cache.has(cacheKey)) {
-        console.log('Cache hit for:', cacheKey);
-        cacheHits++;
-        return cache.get(cacheKey);
-    }
-
-    console.log('Cache miss for:', cacheKey);
-    console.log('Sending audio to Deepgram for transcription');
-    const { result, error } = await deepgramClient.listen.prerecorded.transcribeFile(
-        audioBuffer,
-        options
-    );
-
-    if (error) {
-        console.error('Deepgram API error:', error);
-        throw new Error(`Deepgram API error: ${error.message}`);
-    }
-
-    // Cache the result
-    cache.set(cacheKey, result);
-    setTimeout(() => cache.delete(cacheKey), CACHE_TTL);
-
-    return result;
-}
-
-// Function to get cache status
-function getCacheStatus() {
-    return {
-        size: cache.size,
-        hits: cacheHits
-    };
-}
 
 // Function to verify Telegram webhook
 function verifyTelegramWebhook(req) {
@@ -159,28 +87,6 @@ function isFileSizeValid(fileSize) {
     return fileSize <= MAX_FILE_SIZE;
 }
 
-async function extractAudioFromVideo(videoBuffer) {
-    const inputPath = path.join('/tmp', `input_${Date.now()}.mp4`);
-    const outputPath = path.join('/tmp', `output_${Date.now()}.aac`);
-
-    fs.writeFileSync(inputPath, videoBuffer);
-
-    try {
-        await execPromise(`${ffmpegPath} -i ${inputPath} -vn -acodec copy ${outputPath}`);
-        const audioBuffer = fs.readFileSync(outputPath);
-        fs.unlinkSync(inputPath);
-        fs.unlinkSync(outputPath);
-        return audioBuffer;
-    } catch (error) {
-        console.error('Error during audio extraction:', error);
-        fs.unlinkSync(inputPath);
-        if (fs.existsSync(outputPath)) {
-            fs.unlinkSync(outputPath);
-        }
-        throw error;
-    }
-}
-
 async function handleMediaMessage(message) {
     const chatId = message.chat.id;
     let fileId, fileSize, mediaType, mimeType;
@@ -194,6 +100,11 @@ async function handleMediaMessage(message) {
         fileId = message.video.file_id;
         fileSize = message.video.file_size;
         mediaType = 'video';
+        mimeType = 'video/mp4';
+    } else if (message.video_note) {
+        fileId = message.video_note.file_id;
+        fileSize = message.video_note.file_size;
+        mediaType = 'video_note';
         mimeType = 'video/mp4';
     } else {
         throw new Error('Unsupported media type');
@@ -222,24 +133,26 @@ async function handleMediaMessage(message) {
         });
         console.log('File downloaded. Size:', fileResponse.data.length, 'bytes');
 
-        let audioBuffer = fileResponse.data;
-        if (mediaType === 'video') {
-            console.log('Extracting audio from video...');
-            audioBuffer = await extractAudioFromVideo(fileResponse.data);
-            console.log('Audio extracted. Size:', audioBuffer.length, 'bytes');
-            mimeType = 'audio/aac'; // Update mimeType for extracted audio
-        }
+        const mediaBuffer = fileResponse.data;
 
         const transcriptionOptions = {
             mimetype: mimeType,
             smart_format: true,
             paragraph: true,
             model: 'nova-2',
-            language: 'multi',
             detect_language: true
         };
 
-        const result = await getTranscription(audioBuffer, transcriptionOptions);
+        console.log('Sending media to Deepgram for transcription');
+        const { result, error } = await deepgramClient.listen.prerecorded.transcribeFile(
+            mediaBuffer,
+            transcriptionOptions
+        );
+
+        if (error) {
+            console.error('Deepgram API error:', error);
+            throw new Error(`Deepgram API error: ${error.message}`);
+        }
 
         console.log('Transcription received');
         console.log('Full Deepgram response:', JSON.stringify(result, null, 2));
@@ -326,16 +239,11 @@ export default async (req, res) => {
             const { message } = req.body;
             console.log('Received message:', JSON.stringify(message));
 
-            if (message.voice || message.video) {
+            if (message.voice || message.video || message.video_note) {
                 await handleMediaMessage(message);
             } else if (message.text) {
-                if (message.text.toLowerCase() === '/cachestatus') {
-                    const status = getCacheStatus();
-                    await bot.sendMessage(message.chat.id, `Статус кэша:\nРазмер: ${status.size}\nПопаданий: ${status.hits}`);
-                } else {
-                    await bot.sendMessage(message.chat.id, `Вы сказали: ${message.text}`);
-                    console.log('Echo sent to user');
-                }
+                await bot.sendMessage(message.chat.id, `Вы сказали: ${message.text}`);
+                console.log('Echo sent to user');
             } else {
                 console.log('Received unsupported message type');
                 await bot.sendMessage(message.chat.id, 'Пожалуйста, отправьте голосовое сообщение или видео для транскрибации.');
