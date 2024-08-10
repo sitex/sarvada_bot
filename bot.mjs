@@ -140,6 +140,7 @@ async function handleMediaMessage(message) {
             smart_format: true,
             paragraph: true,
             model: 'nova-2',
+            language: 'multi',
             detect_language: true
         };
 
