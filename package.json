@@ -1,6 +1,6 @@
 {
   "name": "telegram-voice-transcription-bot",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A Telegram bot for voice transcription using Deepgram",
   "main": "bot.js",
   "scripts": {
