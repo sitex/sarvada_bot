@@ -99,6 +99,11 @@ async function handleMediaMessage(message) {
     } else if (message.video) {
         fileId = message.video.file_id;
         fileSize = message.video.file_size;
+        mediaType = 'voice';
+        mimeType = 'audio/mp3';
+    } else if (message.video) {
+        fileId = message.video.file_id;
+        fileSize = message.video.file_size;
         mediaType = 'video';
         mimeType = 'video/mp4';
     } else if (message.video_note) {
