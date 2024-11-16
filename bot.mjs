@@ -96,11 +96,11 @@ async function handleMediaMessage(message) {
         fileSize = message.voice.file_size;
         mediaType = 'voice';
         mimeType = 'audio/ogg';
-    } else if (message.video) {
+    } else if (message.audio) {
         fileId = message.video.file_id;
         fileSize = message.video.file_size;
         mediaType = 'voice';
-        mimeType = 'audio/mp3';
+        mimeType = 'audio/mpeg';
     } else if (message.video) {
         fileId = message.video.file_id;
         fileSize = message.video.file_size;
@@ -124,7 +124,7 @@ async function handleMediaMessage(message) {
             return;
         }
 
-        await bot.sendMessage(chatId, `Транскрибирую ваше ${mediaType === 'voice' ? 'голосовое сообщение' : 'видео'}...`);
+        await bot.sendMessage(chatId, `Транскрибирую ваше ${mediaType === 'voice' ? 'аудио' : 'видео'}...`);
 
         console.log('Attempting to get file link...');
         const fileLink = await bot.getFileLink(fileId);
@@ -245,15 +245,16 @@ export default async (req, res) => {
             const { message } = req.body;
             console.log('Received message:', JSON.stringify(message));
 
-            if (message.voice || message.video || message.video_note) {
+            if (message.voice || message.audio || message.video || message.video_note) {
                 await handleMediaMessage(message);
-            } else if (message.text) {
-                await bot.sendMessage(message.chat.id, `Вы сказали: ${message.text}`);
-                console.log('Echo sent to user');
-            } else {
-                console.log('Received unsupported message type');
-                await bot.sendMessage(message.chat.id, 'Пожалуйста, отправьте голосовое сообщение или видео для транскрибации.');
-            }
+            } 
+            // else if (message.text) {
+            //     await bot.sendMessage(message.chat.id, `Вы сказали: ${message.text}`);
+            //     console.log('Echo sent to user');
+            // } else {
+            //     console.log('Received unsupported message type');
+            //     await bot.sendMessage(message.chat.id, 'Пожалуйста, отправьте голосовое сообщение или видео для транскрибации.');
+            // }
 
             res.status(200).send('OK');
         } catch (error) {
